@@ -1,4 +1,218 @@
 <?php
+function archive_menu() {
+  $items['admin/config/media/archive'] = array(
+    'title' => 'Archive.org',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('archive_page'),
+    'access arguments' => array('access content'),
+  );
+  $items['admin/config/media/archive/%'] = array(
+    'title' => 'Archive.org',
+    'page callback' => 'archive_page_section',
+    'page arguments' => array(3),
+    'access arguments' => array('access content'),
+  );
+  /*
+  $items['admin/config/media/archive/ajax/search'] = array(
+    'page callback' => 'MYMODULE_ajax_callback',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK
+  );
+  $items['MYMODULE/ajax/%/%'] = array(
+    'page callback' => 'MYMODULE_ajax_callback',
+    'page arguments' => array(2, 3),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  */
+  return $items;
+}
+
+function archive_page() {
+  /*
+  drupal_add_library('system', 'drupal.ajax');
+  drupal_add_library('system', 'jquery.form');
+
+  l(t('AJAX'), 'MYMODULE/ajax/nojs/' . $some_argument,
+    array(
+      'attributes' => array(
+        'class' => array(
+          'use-ajax'
+        )
+      )
+    )
+  );
+  */
+  // Output a wrapper '<div id="MYMODULE-wrapper"></div>'
+
+  drupal_add_css(drupal_get_path('module', 'archive') . '/css/main.css');
+
+  $form = array();
+  $form['#tree'] = TRUE;
+
+  $form['archive-data'] = array(
+    '#markup' => '<div id="archive-data"></div><div id="archive-container"></div>',
+    '#weight' => 100
+  );
+
+  $form['archive']['query'] = array(
+    '#type' => 'textfield',
+    '#default_value' => '',
+    '#description' => t('<em>Note: this does not have a concept of "Safe Search" so be careful what you search for.</em>')
+  );
+  $form['archive']['mediatype'] = array(
+    '#type' => 'select',
+    '#multiple' => TRUE,
+    '#title' => t('Media Type'),
+    '#description' => t(''),
+    '#default_value' => 'image',
+    '#options' => array(
+        'image' => 'Image',
+        'video' => 'Video',
+        'audio' => 'Audio',
+        'texts' => 'Text'
+      )
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Search',
+     '#ajax' => array(
+        'callback' => 'archive_page_ajax_submit',
+        'wrapper' => 'archive-data',
+        'method' => 'replace',
+        'effect' => 'fade',
+      ),
+  );
+  return $form;
+}
+
+/*
+function MYMODULE_ajax_callback($type = 'ajax', $some_argument) {
+  if ($type == 'ajax') {
+    $commands[] = ajax_command_replace('#MYMODULE-wrapper', 'Hey ! Some AJAX content !');
+    $page = array('#type' => 'ajax', '#commands' => $commands);
+    ajax_deliver($page);
+  } else {
+    $output = t("This is some content delivered via a page load."); return $output;
+    }
+  }
+ */
+
+/**
+* Ajax callback function.
+*/
+function archive_page_ajax_submit($form, $form_state) {
+  $values = $form_state['values'];
+  $q = $values['archive']['query'];
+  $mediatype = $values['archive']['mediatype'];
+
+  $url = 'http://archive.org/advancedsearch.php?q=' . $q . ' AND mediatype:' . implode(' OR mediatype:', $mediatype);
+
+  /*if (mediatype != 'all') {
+    $url .= ' AND mediatype:' + $mediatype;
+  }*/
+
+  $url .= '&output=json';
+
+  $response = drupal_http_request($url);
+  $data = $response->data;
+  $json = json_decode($data);
+
+  if (!empty($json->response) && $json->response->numFound > 0) {
+    $total = $json->response->numFound;
+    $output = '';
+    $docs = $json->response->docs;
+    $js_arr = array();
+    $output .= '<script>
+                (function($) {';
+    foreach ($docs as $key => $value) {
+      //$output .= '<div class="archive-item" data-identifier="' . $value->identifier. '">' . $value->title . '</div>';
+      $js_arr[] = $value->identifier;
+    }
+    $output .= 'var ids = ["' . implode('","', $js_arr) . '"];';
+    $output .= <<<EOF
+
+    $('#archive-container').empty();
+    $('#archive-container').append('<div class="total">Total Found: $total</div>');
+
+    var len = ids.length,
+    count = 0,
+    item = 0;
+
+    //len = 1;
+    loadIt();
+
+    function loadIt() {
+      if (count == len) {
+        console.log('IM DONE');
+      } else {
+        $.ajax({
+          url: 'https://archive.org/details/' + ids[count],
+          dataType: 'jsonp',
+          data: {
+            'output': 'json'
+          },
+          success: function(data) {
+              //archive-container
+              count++;
+              loadIt();
+
+              console.log(data);
+              var type = data.metadata.mediatype[0],
+              tag = '';
+
+              switch (type) {
+                case 'audio':
+                  tag = '<audio></audio>';
+                  break;
+                case 'image':
+                  tag = '';
+                  break;
+                default:
+                  //
+                  break;
+              }
+              $('#archive-container').append('<div class="archive-item"><h3>' + data.metadata.title[0] + '</h3><p><img src="' + data.misc.image + '" /></p><p>' + tag + '</p><p>' + $.trim(data.metadata.description[0]).substring(0, 100)
+    .split(" ").slice(0, -1).join(" ") + "..." + '</p></div>');
+          },
+          error: function(xhr, ajaxOptions, thrownError) {
+              console.log(xhr, ajaxOptions, thrownError);
+          }
+       });
+
+      }
+    }
+      })(jQuery);
+    </script>
+EOF;
+    return $output;
+  } else {
+    return $form;
+  }
+}
+
+/*function archive_page_submit(&$form, &$form_state) {
+  $values = $form_state['values'];
+  $q = $values['archive']['query'];
+  $mediatype = $values['archive']['mediatype'];
+
+  $url = 'http://archive.org/advancedsearch.php?q=' . $q;
+  $url .= '&output=json';
+
+  $response = drupal_http_request($url);
+  $data = $response->data;
+  $json = json_decode($data);
+  print_r($json);
+  exit();
+
+  $output = '';
+
+}
+*/
+function archive_page_section() {
+  return '';
+}
+
 function archive_wysiwyg_plugin($editor, $version) {
   switch ($editor) {
     case 'ckeditor':
