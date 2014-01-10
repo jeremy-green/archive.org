@@ -1,0 +1,6 @@
+name = Archive.org
+description = The fucking internet bro
+core = 7.x
+dependencies[] = ckeditor
+dependencies[] = wysiwyg
+package = Mutated Creativity

@@ -1,0 +1,16 @@
+<?php
+function archive_wysiwyg_plugin($editor, $version) {
+  switch ($editor) {
+    case 'ckeditor':
+      return array(
+        'archive' => array(
+          'path' => drupal_get_path('module', 'archive'),
+          'buttons' => array(
+            'archive' => t('Archive.org'),
+          ),
+          'load' => TRUE,
+        ),
+      );
+    break;
+  }
+}
